@@ -1,65 +1,71 @@
 import type { SlackApp, SlackEdgeAppEnv } from 'slack-cloudflare-workers'
-import { db } from '../db'
+import { slackRepository } from '../repository'
 
-export const registerMessageFeature = (app: SlackApp<SlackEdgeAppEnv>) => {
-  app.event('message', async ({ body, context, payload }) => {
-    console.log('message', payload)
+// ユーザー処理を分離
+async function ensureUserExists(
+  app: SlackApp<SlackEdgeAppEnv>,
+  userId: string,
+) {
+  try {
+    const user = await slackRepository.findUserById(userId)
+    if (user) return user
 
-    if (payload.subtype === 'bot_message') {
-      console.log('ignore bot message', payload)
-      return
+    // ユーザーが存在しない場合は取得して保存
+    const userInfoResult = await app.client.users.info({ user: userId })
+    if (!(userInfoResult.ok && userInfoResult.user)) {
+      console.error('Failed to fetch user info', {
+        error: userInfoResult.error,
+        userId,
+      })
+      return null
     }
 
-    if (payload.subtype === undefined) {
-      const user = await db
-        .selectFrom('slack_users')
-        .selectAll()
-        .where('userId', '=', payload.user)
-        .executeTakeFirst()
+    const userData = {
+      userId,
+      name: userInfoResult.user.name ?? null,
+      realName: userInfoResult.user.real_name ?? null,
+      profileImage: userInfoResult.user.profile?.image_192 ?? null,
+    }
 
-      if (!user) {
-        console.log('user not found', payload.user)
-        const userInfoResult = await app.client.users.info({
-          user: payload.user,
-        })
-        if (userInfoResult.ok) {
-          const insertedUser = await db
-            .insertInto('slack_users')
-            .values({
-              userId: payload.user,
-              name: userInfoResult.user?.name ?? null,
-              realName: userInfoResult.user?.real_name ?? null,
-              profileImage: userInfoResult.user?.profile?.image_192 ?? null,
-              updatedAt: new Date().toISOString(),
-            })
-            .returningAll()
-            .executeTakeFirst()
-          console.log('user inserted', insertedUser)
-        } else {
-          console.log('user info error', userInfoResult.error)
-        }
+    const savedUser = await slackRepository.createUser(userData)
+    console.log('User created successfully', { userId })
+    return savedUser
+  } catch (error) {
+    console.error('Error in ensureUserExists', { error, userId })
+    return null
+  }
+}
+
+export const registerMessageFeature = (app: SlackApp<SlackEdgeAppEnv>) => {
+  app.event('message', async ({ context, payload }) => {
+    try {
+      // ボットメッセージは無視
+      if (payload.subtype === 'bot_message') {
+        return
       }
 
-      const ret = await db
-        .insertInto('slack_messages')
-        .values([
-          {
-            ts: payload.ts,
-            channel: payload.channel,
-            user: payload.user,
-            text: payload.text,
-            threadTs: payload.thread_ts,
-            subtype: payload.subtype,
-            deleted: false,
-          },
-        ])
-        .execute()
-      console.log(ret)
+      // 通常メッセージの処理
+      if (payload.subtype === undefined && payload.user) {
+        // ユーザー情報を確認・保存
+        await ensureUserExists(app, payload.user)
 
-      await context.say({
-        text: `<@${payload.user}> さん、メッセージありがとうございます！`,
-      })
-      return
+        // メッセージを保存
+        await slackRepository.saveMessage({
+          ts: payload.ts,
+          channel: payload.channel,
+          user: payload.user,
+          text: payload.text,
+          thread_ts: payload.thread_ts,
+          subtype: payload.subtype,
+        })
+
+        // レスポンス送信
+        await context.say({
+          text: `<@${payload.user}> さん、メッセージありがとうございます！`,
+        })
+      }
+    } catch (error) {
+      console.error('Error processing message event', { error, payload })
     }
   })
 }
