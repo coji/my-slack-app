@@ -6,6 +6,7 @@ import {
 import { registerAppMentionTest } from './slack-features/app-mention-test'
 import { registerButtonTestFeature } from './slack-features/button-test'
 import { registerMemoFeature } from './slack-features/memo'
+import { registerMessageFeature } from './slack-features/message'
 import { registerReactionTestFeature } from './slack-features/reaction-test'
 
 export function createSlackApp(env: Env) {
@@ -21,6 +22,7 @@ export function createSlackApp(env: Env) {
 }
 
 function registerHandlers(app: SlackApp<SlackEdgeAppEnv>) {
+  registerMessageFeature(app)
   registerMemoFeature(app)
   registerButtonTestFeature(app)
   registerReactionTestFeature(app)

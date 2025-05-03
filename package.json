@@ -8,6 +8,8 @@
 	},
 	"dependencies": {
 		"hono": "^4.7.8",
+		"kysely": "0.28.2",
+		"kysely-d1": "0.4.0",
 		"slack-cloudflare-workers": "1.3.2"
 	},
 	"devDependencies": {
