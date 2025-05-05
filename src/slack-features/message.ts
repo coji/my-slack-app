@@ -3,7 +3,8 @@ import { errAsync, okAsync, ResultAsync } from 'neverthrow'
 import type { SlackApp, SlackEdgeAppEnv } from 'slack-cloudflare-workers'
 import type { Database } from '~/db'
 import dayjs from '~/utils/dayjs'
-import { slackRepository, type DatabaseError } from '../repository'
+import type { AppError, SlackApiError } from '../errors'
+import { slackRepository } from '../repository'
 
 /**
  * ユーザーが存在し、最近更新されているか確認し、
@@ -13,7 +14,7 @@ import { slackRepository, type DatabaseError } from '../repository'
 function ensureUserExists(
   app: SlackApp<SlackEdgeAppEnv>,
   userId: string,
-): ResultAsync<Selectable<Database['slack_users']>, DatabaseError | Error> {
+): ResultAsync<Selectable<Database['slack_users']>, AppError> {
   return slackRepository.findUserById(userId).andThen((user) => {
     const isRecent =
       user && dayjs(user.updatedAt).isAfter(dayjs().subtract(24, 'hour'))
@@ -23,17 +24,18 @@ function ensureUserExists(
 
     return ResultAsync.fromPromise(
       app.client.users.info({ user: userId }),
-      (e) =>
-        new Error(
-          `Slack API users.info failed: ${e instanceof Error ? e.message : String(e)}`,
-        ),
+      (err) =>
+        ({
+          type: 'SlackApiError',
+          message: 'users.info failed',
+          cause: err,
+        }) satisfies SlackApiError,
     ).andThen((userInfoResult) => {
       if (!(userInfoResult.ok && userInfoResult.user)) {
-        return errAsync(
-          new Error(
-            `Failed to fetch user info from Slack API: ${userInfoResult.error}`,
-          ),
-        )
+        return errAsync({
+          type: 'SlackApiError',
+          message: userInfoResult.error,
+        } as SlackApiError satisfies AppError)
       }
       const fetchedUser = userInfoResult.user
 
@@ -72,7 +74,12 @@ export const registerMessageFeature = (app: SlackApp<SlackEdgeAppEnv>) => {
         ),
       )
       .andThen((ret) =>
-        ret.ok ? okAsync() : errAsync(new Error('Failed to send response')),
+        ret.ok
+          ? okAsync()
+          : errAsync({
+              type: 'SlackApiError',
+              message: ret.error ?? 'unknown error',
+            } satisfies SlackApiError),
       )
       .match(
         () => {
