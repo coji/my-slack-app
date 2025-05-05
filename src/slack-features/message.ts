@@ -53,72 +53,39 @@ export const registerMessageFeature = (app: SlackApp<SlackEdgeAppEnv>) => {
   app.event('message', async ({ context, payload }) => {
     if (payload.subtype !== undefined) return
 
-    // 1. ユーザー情報の確認・更新処理
-    const doEnsureUserExists = (): ResultAsync<
-      Selectable<Database['slack_users']>,
-      DatabaseError | Error
-    > => {
-      return ensureUserExists(app, payload.user)
-    }
-
-    const doSaveMessage = (): ResultAsync<void, DatabaseError> => {
-      return slackRepository
-        .saveMessage({
+    await ensureUserExists(app, payload.user)
+      .andThen(() =>
+        slackRepository.saveMessage({
           ts: payload.ts,
           channel: payload.channel,
           user: payload.user,
           text: payload.text,
           thread_ts: payload.thread_ts,
           subtype: payload.subtype,
-        })
-        .map(() => undefined)
-    }
-
-    const doSendResponse = (): ResultAsync<void, Error> => {
-      return ResultAsync.fromPromise(
-        context.say({
-          text: `<@${payload.user}> さん、メッセージありがとうございます！`,
         }),
-        (e) =>
-          new Error(
-            `context.say failed: ${e instanceof Error ? e.message : String(e)}`,
-          ),
-      ).andThen((sayResult) =>
-        sayResult.ok
-          ? okAsync() // 成功 (okAsync)
-          : errAsync(
-              new Error(
-                `Failed to send response via context.say: ${sayResult.error}`,
-              ),
-            ),
       )
-    }
-
-    const processingPipeline = doEnsureUserExists() // Step 1
-      .andThen(doSaveMessage) // Step 2 (Step 1 が成功した場合のみ実行)
-      .andThen(doSendResponse) // Step 3 (Step 2 が成功した場合のみ実行)
-
-    await processingPipeline.match(
-      () => {
-        console.log(
-          `[${new Date().toLocaleTimeString()}] ✅ ROP Pipeline finished successfully for message ts: ${payload.ts}`,
-        )
-      },
-      (error) => {
-        console.error(
-          `[${new Date().toLocaleTimeString()}] ❌ ROP Pipeline failed for message ts: ${payload.ts}`,
-          {
-            errorMessage: error.message,
-            errorCause: error.cause, // DatabaseError の場合など
-            errorType:
-              error instanceof Error
-                ? error.constructor.name
-                : // biome-ignore lint/suspicious/noExplicitAny: <explanation>
-                  (error as any).type, // エラーの種類を判別
-            payload,
-          },
-        )
-      },
-    )
+      .andThen(() =>
+        ResultAsync.fromSafePromise(
+          context.say({
+            text: `<@${payload.user}> さん、メッセージありがとうございます！`,
+          }),
+        ),
+      )
+      .andThen((ret) =>
+        ret.ok ? okAsync() : errAsync(new Error('Failed to send response')),
+      )
+      .match(
+        () => {
+          console.log(
+            `[${new Date().toLocaleTimeString()}] ✅ ROP Pipeline finished successfully for message ts: ${payload.ts}`,
+          )
+        },
+        (e) => {
+          console.error(
+            `[${new Date().toLocaleTimeString()}] ❌ ROP Pipeline failed for message ts: ${payload.ts}`,
+            e.message,
+          )
+        },
+      )
   })
 }
