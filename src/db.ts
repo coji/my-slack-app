@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { CamelCasePlugin, Kysely, type Generated } from 'kysely'
 import { D1Dialect } from 'kysely-d1'
 
-interface Database {
+export interface Database {
   slack_messages: {
     id: Generated<number>
     ts: string
