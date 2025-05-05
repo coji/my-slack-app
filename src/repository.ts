@@ -1,7 +1,7 @@
 import type { Selectable } from 'kysely'
 import { ResultAsync } from 'neverthrow'
-import { db, type Database } from './db'
 import type { DatabaseError } from './errors'
+import { db, type Database } from './services/db'
 import dayjs from './utils/dayjs'
 
 const createDbError = (message: string, cause?: unknown): DatabaseError => ({

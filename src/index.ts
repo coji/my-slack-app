@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { createSlackApp } from './slack'
+import { createSlackApp } from './app'
 
 const app = new Hono<{ Bindings: Env }>()
 

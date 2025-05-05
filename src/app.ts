@@ -3,11 +3,11 @@ import {
   type SlackAppLogLevel,
   type SlackEdgeAppEnv,
 } from 'slack-cloudflare-workers'
-import { registerAppMentionTest } from './slack-features/app-mention-test'
-import { registerButtonTestFeature } from './slack-features/button-test'
-import { registerMemoFeature } from './slack-features/memo'
-import { registerMessageFeature } from './slack-features/message'
-import { registerReactionTestFeature } from './slack-features/reaction-test'
+import { registerAppMentionTest } from './features/app-mention-test'
+import { registerButtonTestFeature } from './features/button-test'
+import { registerMemoFeature } from './features/memo'
+import { registerMessageFeature } from './features/message'
+import { registerReactionTestFeature } from './features/reaction-test'
 
 export function createSlackApp(env: Env) {
   const app = new SlackApp<SlackEdgeAppEnv>({
